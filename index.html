@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ABC 公益导师匹配系统</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section id="access-screen" class="login-screen hidden">
+      <div class="login-panel">
+        <p class="eyebrow">ABC 公益组织</p>
+        <h1>导师匹配系统</h1>
+        <h2>请输入演示访问码</h2>
+        <label class="account-picker">
+          <span>访问码</span>
+          <input id="accessCodeInput" type="password" autocomplete="current-password" placeholder="Demo access code" />
+        </label>
+        <button id="submitAccessCode" class="login-enter">进入 Demo</button>
+      </div>
+    </section>
+
+    <section id="login-screen" class="login-screen">
+      <div class="login-panel">
+        <p class="eyebrow">ABC 公益组织</p>
+        <h1>导师匹配系统</h1>
+        <h2>请选择你的登陆身份</h2>
+        <div class="login-options">
+          <button class="login-choice" data-login-role="student">学员</button>
+          <button class="login-choice" data-login-role="mentor">导师</button>
+          <button class="login-choice" data-login-role="admin">管理员</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="account-screen" class="login-screen hidden">
+      <div class="login-panel">
+        <p class="eyebrow">ABC 公益组织</p>
+        <h1 id="accountTitle">选择账号</h1>
+        <h2 id="accountPrompt">请选择具体账号</h2>
+        <label class="account-picker">
+          <span id="accountSelectLabel">账号</span>
+          <select id="accountSelect"></select>
+        </label>
+        <button id="enterAccount" class="login-enter">进入</button>
+        <button id="backToRole" class="secondary login-back">返回身份选择</button>
+      </div>
+    </section>
+
+    <header class="topbar app-shell hidden">
+      <div>
+        <p class="eyebrow">ABC 公益组织</p>
+        <h1>导师匹配系统</h1>
+      </div>
+      <div class="login-demo">
+        <span>演示登录</span>
+        <strong id="loginRole">学员</strong>
+        <em id="loginAccount">加载中</em>
+      </div>
+      <button id="logoutButton" class="logout-button">Log Out</button>
+    </header>
+
+    <main class="app-shell hidden">
+      <section id="student-view" class="view">
+        <div class="section-head">
+          <div>
+            <h2>选择感兴趣的导师</h2>
+            <p>查看导师资料，筛选方向，并提交唯一申请。</p>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <aside class="panel filters">
+            <h3>筛选</h3>
+            <label>
+              行业
+              <select id="industryFilter">
+                <option value="">全部行业</option>
+              </select>
+            </label>
+            <label>
+              感兴趣方向
+              <select id="interestFilter">
+                <option value="">全部方向</option>
+              </select>
+            </label>
+            <label>
+              关键词
+              <input id="mentorSearch" type="search" placeholder="学校、职位、项目、话题" />
+            </label>
+            <div class="questionnaire" id="studentQuestionnaire"></div>
+            <div class="feedback-box">
+              <h3>反馈给管理员</h3>
+              <textarea id="studentFeedback" rows="4" placeholder="描述异常情况或补充说明"></textarea>
+              <button id="sendStudentFeedback" class="secondary">提交反馈</button>
+            </div>
+            <div class="feedback-box">
+              <h3>我的反馈对话</h3>
+              <div id="studentConversation"></div>
+            </div>
+          </aside>
+
+          <section>
+            <div id="studentProgress" class="progress-panel"></div>
+            <div id="mentorCards" class="cards"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="mentor-view" class="view">
+        <div class="section-head">
+          <div>
+            <h2>导师选择池</h2>
+            <p>默认显示系统推荐的 8 人选择池，可切换查看所有申请者。</p>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <aside class="panel">
+            <div id="mentorProfile"></div>
+            <label class="toggle">
+              <input id="showAllApplicants" type="checkbox" />
+              <span>查看所有申请者</span>
+            </label>
+            <div class="feedback-box">
+              <h3>反馈给管理员</h3>
+              <textarea id="mentorFeedback" rows="4" placeholder="反馈申请材料、人数或匹配问题"></textarea>
+              <button id="sendMentorFeedback" class="secondary">提交反馈</button>
+            </div>
+          </aside>
+          <section>
+            <div id="mentorDecisionSummary" class="status-strip"></div>
+            <h3>已接收学员</h3>
+            <div id="acceptedStudents" class="cards accepted-list"></div>
+            <h3 class="subhead">申请者</h3>
+            <div id="applicantCards" class="cards"></div>
+          </section>
+        </div>
+        <section class="panel conversation-panel">
+          <h3>与管理员的反馈对话</h3>
+          <div id="mentorConversation"></div>
+        </section>
+      </section>
+
+      <section id="admin-view" class="view">
+        <div class="section-head">
+          <div>
+            <h2>管理员后台</h2>
+            <p>查看问卷、匹配状态和异常反馈，并在特殊情况下手动调整结果。</p>
+          </div>
+          <button id="rerunMatching">重新运行匹配</button>
+        </div>
+
+        <section class="panel overview-panel">
+          <h3>实时概览</h3>
+          <div id="adminStats" class="stats"></div>
+        </section>
+
+        <section class="panel admin-dashboard">
+          <div class="dashboard-head">
+            <h3>管理工作台</h3>
+            <label>
+              搜索
+              <input id="adminSearch" type="search" placeholder="姓名、学校、行业、方向、反馈内容" />
+            </label>
+          </div>
+          <div class="dashboard-tabs" aria-label="管理员子类别">
+            <button class="dashboard-tab active" data-admin-view="matches">匹配看板</button>
+            <button class="dashboard-tab" data-admin-view="students">学员库</button>
+            <button class="dashboard-tab" data-admin-view="mentors">导师库</button>
+            <button class="dashboard-tab" data-admin-view="feedback">异常反馈</button>
+          </div>
+          <div id="adminDashboard" class="dashboard-body"></div>
+        </section>
+      </section>
+    </main>
+
+    <template id="pillTemplate">
+      <span class="pill"></span>
+    </template>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="switchModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="switchModalTitle">
+      <div class="modal-panel">
+        <h3 id="switchModalTitle">确认切换意向导师</h3>
+        <p id="switchModalText"></p>
+        <div class="actions">
+          <button id="confirmSwitch">确定</button>
+          <button id="cancelSwitch" class="secondary">取消</button>
+        </div>
+      </div>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>
