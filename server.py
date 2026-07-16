@@ -277,6 +277,8 @@ class Handler(SimpleHTTPRequestHandler):
         return False
 
     def do_GET(self):
+        if self.path in ("", "/"):
+            self.path = "/index.html"
         if self.path == "/api/config":
             return self.json({"ok": True, "accessRequired": bool(ACCESS_CODE)})
         if self.path.startswith("/api/") and not self.require_access():
