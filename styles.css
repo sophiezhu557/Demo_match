@@ -238,6 +238,13 @@ main {
   color: var(--muted);
 }
 
+.admin-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .grid.two {
   display: grid;
   grid-template-columns: minmax(260px, 320px) 1fr;
@@ -711,6 +718,10 @@ code {
   .section-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .admin-head-actions {
+    justify-content: flex-start;
   }
 
   .login-options,

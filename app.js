@@ -735,6 +735,7 @@ function bindEvents() {
   $("#logoutButton").addEventListener("click", logout);
   ["#industryFilter", "#interestFilter", "#mentorSearch"].forEach((selector) => $(selector).addEventListener("input", renderStudentView));
   $("#showAllApplicants").addEventListener("change", renderMentorView);
+  $("#syncQuestionnaires").addEventListener("click", () => mutate("/api/import-csv", {}, "问卷数据已更新。"));
   $("#rerunMatching").addEventListener("click", () => mutate("/api/rerun", {}, "匹配已重新计算。"));
   $$(".dashboard-tab").forEach((button) => {
     button.addEventListener("click", () => {
