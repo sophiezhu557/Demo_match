@@ -294,6 +294,19 @@ class Handler(SimpleHTTPRequestHandler):
             }
             conn.close()
             return self.json(payload)
+        if self.path == "/api/export-db":
+            conn = db()
+            conn.commit()
+            conn.close()
+            data = DB_PATH.read_bytes()
+            filename = f"abc_mentor_demo_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sqlite3"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         return super().do_GET()
 
     def do_POST(self):

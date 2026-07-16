@@ -113,6 +113,51 @@ async function api(path, options = {}) {
   return data;
 }
 
+function downloadBlob(blob, filename) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
+}
+
+function exportTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+}
+
+async function exportCurrentState() {
+  try {
+    const data = await api("/api/state");
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+    downloadBlob(blob, `abc-mentor-state-${exportTimestamp()}.json`);
+    showToast("当前状态已导出。");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function exportDatabaseBackup() {
+  try {
+    const headers = {};
+    const accessCode = window.sessionStorage.getItem(accessStorageKey);
+    if (accessCode) {
+      headers["X-Demo-Access-Code"] = accessCode;
+    }
+    const response = await fetch("/api/export-db", { headers });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || "数据库导出失败");
+    }
+    const blob = await response.blob();
+    downloadBlob(blob, `abc-mentor-db-${exportTimestamp()}.sqlite3`);
+    showToast("数据库备份已导出。");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
 function showAccessScreen() {
   $("#access-screen").classList.remove("hidden");
   $("#login-screen").classList.add("hidden");
@@ -736,6 +781,8 @@ function bindEvents() {
   ["#industryFilter", "#interestFilter", "#mentorSearch"].forEach((selector) => $(selector).addEventListener("input", renderStudentView));
   $("#showAllApplicants").addEventListener("change", renderMentorView);
   $("#syncQuestionnaires").addEventListener("click", () => mutate("/api/import-csv", {}, "问卷数据已更新。"));
+  $("#exportState").addEventListener("click", exportCurrentState);
+  $("#exportDatabase").addEventListener("click", exportDatabaseBackup);
   $("#rerunMatching").addEventListener("click", () => mutate("/api/rerun", {}, "匹配已重新计算。"));
   $$(".dashboard-tab").forEach((button) => {
     button.addEventListener("click", () => {
