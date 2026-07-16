@@ -23,7 +23,7 @@ http://127.0.0.1:4173/
    - Start Command: `python server.py`
    - `HOST=0.0.0.0`
 4. 在 Render 的 Environment Variables 中设置：
-   - `DEMO_ACCESS_CODE`: 演示访问码，用于保护 demo 页面和 API。
+   - `DEMO_ACCESS_CODE`: 演示访问码(abc2026)，用于保护 demo 页面和 API。
 
 ## 可选：持久化 SQLite 数据
 
