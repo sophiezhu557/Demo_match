@@ -58,6 +58,11 @@ button.secondary:hover {
   background: #dbeafe;
 }
 
+button.active-soft {
+  border-color: var(--primary);
+  background: #dbeafe;
+}
+
 button.danger {
   color: var(--red);
   border: 1px solid #f1b8b4;
@@ -320,6 +325,46 @@ textarea {
   margin-bottom: 3px;
 }
 
+.preference-card.rank-1 {
+  background: #f1fbf6;
+}
+
+.preference-card.rank-2 {
+  background: #f3f8ff;
+}
+
+.preference-card.rank-3 {
+  background: #fffaf0;
+}
+
+.locked-card {
+  opacity: 0.62;
+  background-image: repeating-linear-gradient(-45deg, rgba(100, 116, 139, 0.06) 0, rgba(100, 116, 139, 0.06) 8px, transparent 8px, transparent 16px);
+}
+
+.legend {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.legend-r1 {
+  background: #e7f5ef;
+}
+
+.legend-r2 {
+  background: #edf4ff;
+}
+
+.legend-r3 {
+  background: #fff7df;
+}
+
+.notification-panel,
+.round-application-panel {
+  margin-bottom: 16px;
+}
+
 .meta {
   color: var(--muted);
   font-size: 13px;
@@ -576,6 +621,29 @@ code {
 
 .student-table-row {
   grid-template-columns: minmax(150px, 0.8fr) minmax(180px, 1fr) minmax(120px, 0.7fr) minmax(260px, 1.2fr);
+}
+
+.dashboard-filter-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.dashboard-filter-row label,
+.compact-control {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.compact-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.compact-control input {
+  width: 72px;
+  padding: 8px 10px;
 }
 
 .inline-admin-action {

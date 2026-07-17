@@ -91,8 +91,52 @@ def init_db():
           detail text not null,
           created_at text not null
         );
+        create table if not exists round_state (
+          id integer primary key check (id = 1),
+          current_round integer not null default 1,
+          round1_closed integer not null default 0,
+          round2_closed integer not null default 0,
+          round3_closed integer not null default 0
+        );
+        create table if not exists round_applications (
+          id integer primary key autoincrement,
+          round integer not null,
+          student_id text not null,
+          mentor_id text not null,
+          preference_rank integer,
+          message text,
+          status text not null default 'submitted',
+          created_at text not null
+        );
+        create unique index if not exists idx_round_app_unique
+          on round_applications(round, student_id, mentor_id);
+        create table if not exists matches (
+          student_id text primary key,
+          mentor_id text not null,
+          round integer not null,
+          created_at text not null
+        );
+        create table if not exists notifications (
+          id integer primary key autoincrement,
+          student_id text not null,
+          round integer not null,
+          message text not null,
+          created_at text not null
+        );
+        create table if not exists mentor_settings (
+          mentor_id text primary key,
+          capacity integer not null default 3
+        );
+        create table if not exists student_round_choices (
+          student_id text not null,
+          round integer not null,
+          choice text not null,
+          created_at text not null,
+          primary key(student_id, round)
+        );
         """
     )
+    cur.execute("insert or ignore into round_state(id, current_round, round1_closed, round2_closed, round3_closed) values (1, 1, 0, 0, 0)")
 
     if cur.execute("select count(*) from mentors").fetchone()[0] == 0:
         with (INPUT_DIR / "mentors.csv").open(newline="", encoding="utf-8") as file:
@@ -239,6 +283,131 @@ def sync_statuses(cur):
         cur.execute("update applications set status = ? where student_id = ?", (status, app["student_id"]))
 
 
+def round_state(cur):
+    return dict(cur.execute("select * from round_state where id = 1").fetchone())
+
+
+def mentor_match_count(cur, mentor_id):
+    return cur.execute("select count(*) from matches where mentor_id = ?", (mentor_id,)).fetchone()[0]
+
+
+def mentor_preaccepted_count(cur, mentor_id):
+    return cur.execute(
+        "select count(*) from round_applications where round = 1 and mentor_id = ? and status = 'preaccepted'",
+        (mentor_id,),
+    ).fetchone()[0]
+
+
+def mentor_capacity(cur, mentor_id):
+    row = cur.execute("select capacity from mentor_settings where mentor_id = ?", (mentor_id,)).fetchone()
+    return int(row["capacity"]) if row else 3
+
+
+def finalize_round1(cur):
+    students = [row["student_id"] for row in cur.execute("select distinct student_id from round_applications where round = 1")]
+    for student_id in students:
+        if student_match(cur, student_id):
+            continue
+        candidates = cur.execute(
+            """
+            select * from round_applications
+            where round = 1 and student_id = ? and status = 'preaccepted'
+            order by preference_rank asc
+            """,
+            (student_id,),
+        ).fetchall()
+        chosen = None
+        for candidate in candidates:
+            if mentor_match_count(cur, candidate["mentor_id"]) < mentor_capacity(cur, candidate["mentor_id"]):
+                chosen = candidate
+                break
+        if chosen:
+            cur.execute(
+                "insert into matches(student_id, mentor_id, round, created_at) values (?, ?, 1, ?)",
+                (student_id, chosen["mentor_id"], now()),
+            )
+            cur.execute(
+                "update round_applications set status = 'accepted' where round = 1 and student_id = ? and mentor_id = ?",
+                (student_id, chosen["mentor_id"]),
+            )
+            cur.execute(
+                "update round_applications set status = 'locked' where round = 1 and student_id = ? and mentor_id != ? and status != 'rejected'",
+                (student_id, chosen["mentor_id"]),
+            )
+        else:
+            cur.execute(
+                "update round_applications set status = 'not_matched' where round = 1 and student_id = ? and status = 'preaccepted'",
+                (student_id,),
+            )
+        cur.execute(
+            "update round_applications set status = 'timeout' where round = 1 and student_id = ? and status = 'submitted'",
+            (student_id,),
+        )
+
+
+def finalize_round2(cur):
+    cur.execute("update round_applications set status = 'timeout' where round = 2 and status = 'submitted'")
+
+
+def failure_reason(cur, student_id, round_number):
+    statuses = [row["status"] for row in cur.execute("select status from round_applications where round = ? and student_id = ?", (round_number, student_id))]
+    if not statuses:
+        return "未提交申请"
+    if any(status == "timeout" for status in statuses) or any(status in ("submitted", "preaccepted", "not_matched") for status in statuses):
+        return "匹配超时：导师在本轮截止前没有完成接收或拒绝。"
+    if all(status == "rejected" for status in statuses):
+        return "需求不匹配：导师明确拒绝了申请。"
+    return "本轮未成功匹配。"
+
+
+def student_match(cur, student_id):
+    row = cur.execute("select * from matches where student_id = ?", (student_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def add_notification(cur, student_id, round_number, message):
+    cur.execute(
+        "insert into notifications(student_id, round, message, created_at) values (?, ?, ?, ?)",
+        (student_id, round_number, message, now()),
+    )
+
+
+def close_round(cur, round_number):
+    if round_number == 1:
+        finalize_round1(cur)
+    if round_number == 2:
+        finalize_round2(cur)
+    mentors = {row["id"]: dict(row) for row in cur.execute("select * from mentors")}
+    students = [dict(row) for row in cur.execute("select * from students")]
+    participants = students
+    if round_number == 2:
+        participants = [
+            student
+            for student in students
+            if cur.execute("select 1 from round_applications where round = 2 and student_id = ?", (student["id"],)).fetchone()
+        ]
+    if round_number == 3:
+        participants = [student for student in students if student_match(cur, student["id"])]
+
+    for student in participants:
+        match = student_match(cur, student["id"])
+        mentor = mentors.get(match["mentor_id"]) if match else None
+        if round_number == 1:
+            message = f"第一轮匹配已经结束，你成功匹配到了{mentor['name']}导师。" if mentor else f"第一轮匹配已经结束，你未成功匹配到导师。原因：{failure_reason(cur, student['id'], 1)}你可以选择参加第二轮补录，或退出匹配。"
+        elif round_number == 2:
+            message = f"第二轮匹配结束，你成功匹配到了{mentor['name']}导师。" if mentor else f"第二轮匹配结束，你没有匹配成功。原因：{failure_reason(cur, student['id'], 2)}你可以选择进入管理员人工匹配，或退出匹配。"
+        else:
+            message = f"第三轮匹配结束，你成功匹配到了{mentor['name']}导师。" if mentor else "第三轮匹配结束，系统管理员仍需继续处理你的匹配。"
+        add_notification(cur, student["id"], round_number, message)
+
+    if round_number == 1:
+        cur.execute("update round_state set round1_closed = 1, current_round = max(current_round, 2) where id = 1")
+    elif round_number == 2:
+        cur.execute("update round_state set round2_closed = 1, current_round = max(current_round, 3) where id = 1")
+    elif round_number == 3:
+        cur.execute("update round_state set round3_closed = 1 where id = 1")
+
+
 def state():
     conn = db()
     data = {
@@ -247,6 +416,12 @@ def state():
         "applications": [dict(row) for row in conn.execute("select * from applications")],
         "pools": [dict(row) for row in conn.execute("select * from pools order by mentor_id, match_percent desc")],
         "decisions": [dict(row) for row in conn.execute("select * from decisions")],
+        "round_state": dict(conn.execute("select * from round_state where id = 1").fetchone()),
+        "round_applications": [dict(row) for row in conn.execute("select * from round_applications order by round, preference_rank, created_at")],
+        "matches": [dict(row) for row in conn.execute("select * from matches")],
+        "notifications": [dict(row) for row in conn.execute("select * from notifications order by id desc")],
+        "mentor_settings": [dict(row) for row in conn.execute("select * from mentor_settings")],
+        "student_round_choices": [dict(row) for row in conn.execute("select * from student_round_choices")],
         "feedback": [dict(row) for row in conn.execute("select * from feedback order by id desc")],
         "database": database_overview(conn),
     }
@@ -255,7 +430,7 @@ def state():
 
 
 def database_overview(conn):
-    tables = ["mentors", "students", "applications", "pools", "decisions", "feedback", "admin_actions"]
+    tables = ["mentors", "students", "applications", "pools", "decisions", "round_applications", "matches", "notifications", "mentor_settings", "student_round_choices", "feedback", "admin_actions"]
     return {
         "path": str(DB_PATH),
         "tables": [{"name": table, "rows": conn.execute(f"select count(*) from {table}").fetchone()[0]} for table in tables],
@@ -329,6 +504,158 @@ class Handler(SimpleHTTPRequestHandler):
                 run_matching()
                 return self.json({"ok": True, "message": "申请已提交，系统已重新匹配。"})
 
+            if self.path == "/api/round1/apply":
+                rs = round_state(cur)
+                if rs["round1_closed"]:
+                    return self.json({"ok": False, "message": "第一轮申请已经结束。"}, status=400)
+                if student_match(cur, body["studentId"]):
+                    return self.json({"ok": False, "message": "你已经匹配成功，不能重复申请。"}, status=400)
+                preferences = [mentor_id for mentor_id in body.get("preferences", []) if mentor_id]
+                seen = set()
+                preferences = [mentor_id for mentor_id in preferences if not (mentor_id in seen or seen.add(mentor_id))]
+                if not preferences:
+                    return self.json({"ok": False, "message": "请至少选择一位志愿导师。"}, status=400)
+                if len(preferences) > 3:
+                    return self.json({"ok": False, "message": "第一轮最多提交三位志愿导师。"}, status=400)
+                existing = cur.execute("select 1 from round_applications where round = 1 and student_id = ?", (body["studentId"],)).fetchone()
+                if existing:
+                    return self.json({"ok": False, "message": "第一轮志愿已提交，不能更改。"}, status=400)
+                for rank, mentor_id in enumerate(preferences, start=1):
+                    cur.execute(
+                        "insert into round_applications(round, student_id, mentor_id, preference_rank, message, status, created_at) values (1, ?, ?, ?, ?, 'submitted', ?)",
+                        (body["studentId"], mentor_id, rank, body.get("message", ""), now()),
+                    )
+                conn.commit()
+                return self.json({"ok": True, "message": "第一轮志愿已提交。"})
+
+            if self.path == "/api/round2/apply":
+                rs = round_state(cur)
+                if not rs["round1_closed"] or rs["round2_closed"]:
+                    return self.json({"ok": False, "message": "当前不能提交第二轮申请。"}, status=400)
+                if student_match(cur, body["studentId"]):
+                    return self.json({"ok": False, "message": "你已经匹配成功，不能参加补录。"}, status=400)
+                choice = cur.execute("select choice from student_round_choices where student_id = ? and round = 2", (body["studentId"],)).fetchone()
+                if choice and choice["choice"] == "exit":
+                    return self.json({"ok": False, "message": "你已选择退出匹配，不能提交第二轮申请。"}, status=400)
+                cur.execute("delete from round_applications where round = 2 and student_id = ?", (body["studentId"],))
+                cur.execute(
+                    "insert into round_applications(round, student_id, mentor_id, preference_rank, message, status, created_at) values (2, ?, ?, 1, ?, 'submitted', ?)",
+                    (body["studentId"], body["mentorId"], body.get("message", ""), now()),
+                )
+                conn.commit()
+                return self.json({"ok": True, "message": "第二轮补录申请已提交。"})
+
+            if self.path == "/api/student/round-choice":
+                student_id = body["studentId"]
+                round_number = int(body["round"])
+                choice = body["choice"]
+                if choice not in ("continue", "exit"):
+                    return self.json({"ok": False, "message": "无效选择。"}, status=400)
+                if student_match(cur, student_id):
+                    return self.json({"ok": False, "message": "你已经匹配成功，不需要选择下一步。"}, status=400)
+                cur.execute(
+                    "insert into student_round_choices(student_id, round, choice, created_at) values (?, ?, ?, ?) on conflict(student_id, round) do update set choice = excluded.choice, created_at = excluded.created_at",
+                    (student_id, round_number, choice, now()),
+                )
+                conn.commit()
+                return self.json({"ok": True, "message": "选择已保存。"})
+
+            if self.path == "/api/mentor/select":
+                round_number = int(body.get("round", 1))
+                student_id = body["studentId"]
+                mentor_id = body["mentorId"]
+                app = cur.execute(
+                    "select * from round_applications where round = ? and mentor_id = ? and student_id = ?",
+                    (round_number, mentor_id, student_id),
+                ).fetchone()
+                if not app:
+                    return self.json({"ok": False, "message": "未找到该学员申请。"}, status=404)
+                if app["status"] == "rejected":
+                    return self.json({"ok": False, "message": "该申请已被拒绝，不能再次选择。"}, status=400)
+                if round_number == 1:
+                    rs = round_state(cur)
+                    if rs["round1_closed"]:
+                        return self.json({"ok": False, "message": "第一轮已经结束，不能继续反选。"}, status=400)
+                    if app["status"] == "preaccepted":
+                        return self.json({"ok": True, "message": "该学员已在你的预匹配名单中。"})
+                    if mentor_preaccepted_count(cur, mentor_id) + mentor_match_count(cur, mentor_id) >= mentor_capacity(cur, mentor_id):
+                        return self.json({"ok": False, "message": "该导师名额已满。"}, status=400)
+                    cur.execute(
+                        "update round_applications set status = 'preaccepted' where round = 1 and mentor_id = ? and student_id = ?",
+                        (mentor_id, student_id),
+                    )
+                    conn.commit()
+                    return self.json({"ok": True, "message": "已加入预匹配，第一轮结束时统一结算。"})
+                if mentor_match_count(cur, mentor_id) >= mentor_capacity(cur, mentor_id):
+                    return self.json({"ok": False, "message": "该导师名额已满。"}, status=400)
+                existing_match = student_match(cur, student_id)
+                if existing_match:
+                    return self.json({"ok": False, "message": "该学员已经被其他导师匹配。"}, status=400)
+                cur.execute("insert into matches(student_id, mentor_id, round, created_at) values (?, ?, ?, ?)", (student_id, mentor_id, round_number, now()))
+                cur.execute("update round_applications set status = 'accepted' where round = ? and mentor_id = ? and student_id = ?", (round_number, mentor_id, student_id))
+                conn.commit()
+                return self.json({"ok": True, "message": "已反选该学员。"})
+
+            if self.path == "/api/mentor/capacity":
+                mentor_id = body["mentorId"]
+                capacity = max(1, min(20, int(body["capacity"])))
+                if mentor_match_count(cur, mentor_id) + mentor_preaccepted_count(cur, mentor_id) > capacity:
+                    return self.json({"ok": False, "message": "当前已匹配或预匹配人数超过该上限，不能设置为这个数字。"}, status=400)
+                cur.execute(
+                    "insert into mentor_settings(mentor_id, capacity) values (?, ?) on conflict(mentor_id) do update set capacity = excluded.capacity",
+                    (mentor_id, capacity),
+                )
+                conn.commit()
+                return self.json({"ok": True, "message": "名额上限已更新。"})
+
+            if self.path == "/api/mentor/reject":
+                cur.execute(
+                    "update round_applications set status = 'rejected' where round = ? and mentor_id = ? and student_id = ? and status in ('submitted', 'preaccepted')",
+                    (int(body.get("round", 2)), body["mentorId"], body["studentId"]),
+                )
+                conn.commit()
+                return self.json({"ok": True, "message": "已拒绝该申请。"})
+
+            if self.path == "/api/admin/end-round":
+                close_round(cur, int(body["round"]))
+                conn.commit()
+                return self.json({"ok": True, "message": f"第 {body['round']} 轮匹配已结束，通知已生成。"})
+
+            if self.path == "/api/admin/reopen-round1":
+                cur.execute("delete from matches where round in (1, 2, 3)")
+                cur.execute("delete from round_applications where round in (2, 3)")
+                cur.execute(
+                    "update round_applications set status = 'submitted' where round = 1 and status in ('accepted', 'locked', 'timeout', 'not_matched')"
+                )
+                cur.execute("delete from notifications where round in (1, 2, 3)")
+                cur.execute("delete from student_round_choices where round in (2, 3)")
+                cur.execute("update round_state set current_round = 1, round1_closed = 0, round2_closed = 0, round3_closed = 0 where id = 1")
+                cur.execute("insert into admin_actions(action, detail, created_at) values (?, ?, ?)", ("reopen_round1", "{}", now()))
+                conn.commit()
+                return self.json({"ok": True, "message": "已撤回第一轮结算，回到第一轮测试状态。"})
+
+            if self.path == "/api/admin/manual-match":
+                student_id = body["studentId"]
+                mentor_id = body["mentorId"]
+                rs = round_state(cur)
+                if not rs["round2_closed"] or rs["round3_closed"]:
+                    return self.json({"ok": False, "message": "第三轮人工匹配只能在第二轮结束后进行。"}, status=400)
+                if student_match(cur, student_id):
+                    return self.json({"ok": False, "message": "该学员已经匹配成功。"}, status=400)
+                choice = cur.execute("select choice from student_round_choices where student_id = ? and round = 3", (student_id,)).fetchone()
+                if not choice or choice["choice"] != "continue":
+                    return self.json({"ok": False, "message": "该学员尚未选择进入管理员人工匹配。"}, status=400)
+                if mentor_match_count(cur, mentor_id) >= mentor_capacity(cur, mentor_id):
+                    return self.json({"ok": False, "message": "该导师名额已满。"}, status=400)
+                cur.execute("insert into matches(student_id, mentor_id, round, created_at) values (?, ?, 3, ?)", (student_id, mentor_id, now()))
+                cur.execute(
+                    "insert or ignore into round_applications(round, student_id, mentor_id, preference_rank, message, status, created_at) values (3, ?, ?, 1, '管理员人工匹配', 'accepted', ?)",
+                    (student_id, mentor_id, now()),
+                )
+                cur.execute("update round_applications set status = 'accepted' where round = 3 and student_id = ? and mentor_id = ?", (student_id, mentor_id))
+                conn.commit()
+                return self.json({"ok": True, "message": "已完成管理员人工匹配。"})
+
             if self.path == "/api/decision":
                 accepted = cur.execute(
                     "select count(*) from decisions where mentor_id = ? and decision = 'accepted'",
@@ -394,10 +721,33 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.json({"ok": True, "message": "已放入导师选择池。"})
 
             if self.path == "/api/admin/unpair":
+                mentor = cur.execute("select name from mentors where id = ?", (body["mentorId"],)).fetchone()
+                match = cur.execute(
+                    "select * from matches where mentor_id = ? and student_id = ?",
+                    (body["mentorId"], body["studentId"]),
+                ).fetchone()
+                cur.execute(
+                    "delete from matches where mentor_id = ? and student_id = ?",
+                    (body["mentorId"], body["studentId"]),
+                )
+                cur.execute(
+                    "update round_applications set status = 'submitted' where mentor_id = ? and student_id = ? and status = 'accepted'",
+                    (body["mentorId"], body["studentId"]),
+                )
+                if match and int(match["round"]) == 1:
+                    cur.execute(
+                        "update round_applications set status = 'submitted' where round = 1 and student_id = ? and status = 'locked'",
+                        (body["studentId"],),
+                    )
                 cur.execute(
                     "delete from decisions where mentor_id = ? and student_id = ?",
                     (body["mentorId"], body["studentId"]),
                 )
+                if mentor:
+                    cur.execute(
+                        "delete from notifications where student_id = ? and message like ?",
+                        (body["studentId"], f"%成功匹配到了{mentor['name']}导师%"),
+                    )
                 cur.execute("insert into admin_actions(action, detail, created_at) values (?, ?, ?)", ("unpair", json.dumps(body, ensure_ascii=False), now()))
                 sync_statuses(cur)
                 conn.commit()

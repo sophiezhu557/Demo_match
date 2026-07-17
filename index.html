@@ -89,15 +89,6 @@
               <input id="mentorSearch" type="search" placeholder="学校、职位、项目、话题" />
             </label>
             <div class="questionnaire" id="studentQuestionnaire"></div>
-            <div class="feedback-box">
-              <h3>反馈给管理员</h3>
-              <textarea id="studentFeedback" rows="4" placeholder="描述异常情况或补充说明"></textarea>
-              <button id="sendStudentFeedback" class="secondary">提交反馈</button>
-            </div>
-            <div class="feedback-box">
-              <h3>我的反馈对话</h3>
-              <div id="studentConversation"></div>
-            </div>
           </aside>
 
           <section>
@@ -105,6 +96,12 @@
             <div id="mentorCards" class="cards"></div>
           </section>
         </div>
+        <section class="panel conversation-panel">
+          <h3>与管理员的反馈对话</h3>
+          <textarea id="studentFeedback" rows="4" placeholder="描述异常情况或补充说明"></textarea>
+          <button id="sendStudentFeedback" class="secondary">提交反馈</button>
+          <div id="studentConversation"></div>
+        </section>
       </section>
 
       <section id="mentor-view" class="view">
@@ -122,11 +119,6 @@
               <input id="showAllApplicants" type="checkbox" />
               <span>查看所有申请者</span>
             </label>
-            <div class="feedback-box">
-              <h3>反馈给管理员</h3>
-              <textarea id="mentorFeedback" rows="4" placeholder="反馈申请材料、人数或匹配问题"></textarea>
-              <button id="sendMentorFeedback" class="secondary">提交反馈</button>
-            </div>
           </aside>
           <section>
             <div id="mentorDecisionSummary" class="status-strip"></div>
@@ -138,6 +130,8 @@
         </div>
         <section class="panel conversation-panel">
           <h3>与管理员的反馈对话</h3>
+          <textarea id="mentorFeedback" rows="4" placeholder="反馈申请材料、人数或匹配问题"></textarea>
+          <button id="sendMentorFeedback" class="secondary">提交反馈</button>
           <div id="mentorConversation"></div>
         </section>
       </section>
@@ -150,9 +144,11 @@
           </div>
           <div class="admin-head-actions">
             <button id="syncQuestionnaires" class="secondary">更新问卷数据</button>
-            <button id="exportState" class="secondary">导出当前状态</button>
             <button id="exportDatabase" class="secondary">导出数据库备份</button>
-            <button id="rerunMatching">重新运行匹配</button>
+            <button id="endRound1" class="secondary">结束第一轮</button>
+            <button id="reopenRound1" class="secondary">撤回第一轮结算</button>
+            <button id="endRound2" class="secondary">结束第二轮</button>
+            <button id="endRound3" class="secondary">结束第三轮</button>
           </div>
         </div>
 
@@ -173,6 +169,7 @@
             <button class="dashboard-tab active" data-admin-view="matches">匹配看板</button>
             <button class="dashboard-tab" data-admin-view="students">学员库</button>
             <button class="dashboard-tab" data-admin-view="mentors">导师库</button>
+            <button class="dashboard-tab" data-admin-view="manual">人工匹配</button>
             <button class="dashboard-tab" data-admin-view="feedback">异常反馈</button>
           </div>
           <div id="adminDashboard" class="dashboard-body"></div>
