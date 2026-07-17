@@ -541,6 +541,7 @@ function renderStudentView() {
     ${notifications.length ? `<section class="panel notification-panel"><h3>系统通知</h3>${notifications.map((item) => `<div class="message"><p>${escapeHtml(item.message)}</p><div class="meta">${escapeHtml(item.created_at)}</div></div>`).join("")}</section>` : ""}
     ${applicationPanel}
     <h3 class="subhead">导师公开资料</h3>
+    <div class="mentor-public-grid">
     ${filtered.map((mentor) => {
       const matchValue = matchPercentFor(student, mentor);
       return `
@@ -559,6 +560,7 @@ function renderStudentView() {
         </article>
       `;
     }).join("")}
+    </div>
   `;
 
   $("#submitRound1")?.addEventListener("click", () => submitRound1(student));

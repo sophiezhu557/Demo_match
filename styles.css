@@ -309,6 +309,17 @@ textarea {
   gap: 16px;
 }
 
+.student-main-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.mentor-public-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
 .card {
   display: grid;
   gap: 12px;
@@ -453,7 +464,7 @@ textarea {
 }
 
 .subhead {
-  margin-top: 18px;
+  margin-top: 8px;
 }
 
 .accepted-list {
