@@ -23,6 +23,7 @@ const state = {
   adminSearch: "",
   adminStudentStatus: "all",
   adminMentorPanels: {},
+  manualStudentId: "",
   mentorSort: "preference",
   accessRequired: false
 };
@@ -83,6 +84,10 @@ function estimatedMatchPercent(student, mentor) {
 function matchPercentFor(student, mentor) {
   const poolMatch = state.pools.find((item) => item.mentor_id === mentor.id && item.student_id === student.id);
   return poolMatch?.match_percent ?? estimatedMatchPercent(student, mentor);
+}
+
+function mentorsByRecommendation(student, mentors = state.mentors) {
+  return [...mentors].sort((a, b) => matchPercentFor(student, b) - matchPercentFor(student, a));
 }
 
 function statusLabel(status) {
@@ -469,9 +474,13 @@ function renderStudentView() {
   const filtered = state.mentors.filter((mentor) => {
     const haystack = `${mentor.name} ${mentor.school} ${mentor.industry} ${mentor.title} ${mentor.projects} ${mentor.topics} ${mentor.message}`.toLowerCase();
     return (!industry || mentor.industry === industry) && (!interest || tags(mentor.interests).includes(interest)) && (!query || haystack.includes(query));
-  }).sort((a, b) => matchPercentFor(student, b) - matchPercentFor(student, a));
+  });
+  const rankedMentors = mentorsByRecommendation(student);
+  const filteredMentors = mentorsByRecommendation(student, filtered);
+  const selectableMentors = filteredMentors.length ? filteredMentors : rankedMentors;
+  const noFilterMatches = !filteredMentors.length && rankedMentors.length;
 
-  const mentorOptions = `<option value="">不选择</option>${filtered.map((mentor) => `<option value="${mentor.id}">${escapeHtml(mentor.name)}｜${escapeHtml(mentor.industry)}｜${percent(matchPercentFor(student, mentor))}</option>`).join("")}`;
+  const mentorOptions = `<option value="">请选择导师</option>${selectableMentors.map((mentor) => `<option value="${mentor.id}">${escapeHtml(mentor.name)}｜${escapeHtml(mentor.industry)}｜${percent(matchPercentFor(student, mentor))}${noFilterMatches ? "｜推荐" : ""}</option>`).join("")}`;
   const round1Submitted = round1Apps.length ? `
     <div class="panel round-application-panel">
       <h3>第一轮志愿已提交</h3>
@@ -542,7 +551,7 @@ function renderStudentView() {
     ${applicationPanel}
     <h3 class="subhead">导师公开资料</h3>
     <div class="mentor-public-grid">
-    ${filtered.map((mentor) => {
+    ${filteredMentors.length ? filteredMentors.map((mentor) => {
       const matchValue = matchPercentFor(student, mentor);
       return `
         <article class="card">
@@ -559,7 +568,7 @@ function renderStudentView() {
           <div class="meta">公开留言：${escapeHtml(mentor.message)}</div>
         </article>
       `;
-    }).join("")}
+    }).join("") : `<div class="empty">当前筛选没有匹配导师，志愿下拉已按你的问卷推荐全部导师。</div>`}
     </div>
   `;
 
@@ -792,14 +801,17 @@ function renderAdminDashboard() {
 function renderManualMatchPanel() {
   const unmatched = state.students.filter((student) => !matchForStudent(student.id) && roundChoiceForStudent(student.id, 3) === "continue");
   const availableMentors = state.mentors.filter((mentor) => mentorCapacityLeft(mentor.id) > 0);
+  const selectedStudent = unmatched.find((student) => student.id === state.manualStudentId) || unmatched[0];
+  state.manualStudentId = selectedStudent?.id || "";
+  const recommendedMentors = selectedStudent ? mentorsByRecommendation(selectedStudent, availableMentors) : availableMentors;
   const enabled = Boolean(state.round_state.round2_closed) && !state.round_state.round3_closed;
   return `
     <section class="dashboard-card">
       <h4>人工匹配</h4>
       <p class="meta">${enabled ? "第二轮已经结束，管理员可以为仍未匹配的学员进行人工匹配。" : "该区域会在第二轮结束后启用；第一轮和第二轮进行中不能人工匹配。"}</p>
       <div class="inline-admin-action">
-        <label>未匹配学员<select id="manualStudent" ${enabled ? "" : "disabled"}>${unmatched.map((student) => `<option value="${student.id}">${escapeHtml(student.name)}｜${escapeHtml(student.major)}｜${escapeHtml(student.interests)}</option>`).join("")}</select></label>
-        <label>未招满导师<select id="manualMentor" ${enabled ? "" : "disabled"}>${availableMentors.map((mentor) => `<option value="${mentor.id}">${escapeHtml(mentor.name)}｜剩余 ${mentorCapacityLeft(mentor.id)} 位｜${escapeHtml(mentor.interests)}</option>`).join("")}</select></label>
+        <label>未匹配学员<select id="manualStudent" ${enabled ? "" : "disabled"}>${unmatched.map((student) => `<option value="${student.id}" ${student.id === state.manualStudentId ? "selected" : ""}>${escapeHtml(student.name)}｜${escapeHtml(student.major)}｜${escapeHtml(student.interests)}</option>`).join("")}</select></label>
+        <label>推荐导师<select id="manualMentor" ${enabled ? "" : "disabled"}>${selectedStudent ? recommendedMentors.map((mentor) => `<option value="${mentor.id}">${escapeHtml(mentor.name)}｜匹配度 ${percent(matchPercentFor(selectedStudent, mentor))}｜剩余 ${mentorCapacityLeft(mentor.id)} 位</option>`).join("") : `<option value="">暂无待匹配学员</option>`}</select></label>
         <button id="manualMatch" data-manual-enabled="${enabled ? "true" : "false"}">人工匹配</button>
       </div>
     </section>
@@ -1004,6 +1016,10 @@ function bindAdminDashboardActions() {
   });
   $("#adminStudentStatusFilter")?.addEventListener("change", (event) => {
     state.adminStudentStatus = event.target.value;
+    renderAdminDashboard();
+  });
+  $("#manualStudent")?.addEventListener("change", (event) => {
+    state.manualStudentId = event.target.value;
     renderAdminDashboard();
   });
   $("#manualMatch")?.addEventListener("click", () => {
